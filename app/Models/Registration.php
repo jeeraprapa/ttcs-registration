@@ -14,7 +14,7 @@ class Registration extends Model
 
     protected function casts(): array
     {
-        return ['session_date_snapshot' => 'date', 'guest_count' => 'integer', 'seat_count' => 'integer'];
+        return ['cancelled_at' => 'datetime', 'checked_in_at' => 'datetime', 'session_date_snapshot' => 'date', 'guest_count' => 'integer', 'seat_count' => 'integer'];
     }
 
     public function eventSession(): BelongsTo

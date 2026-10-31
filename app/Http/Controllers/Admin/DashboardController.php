@@ -24,8 +24,9 @@ class DashboardController extends Controller
         });
 
         return view('admin.dashboard', [
-            'registrationCount' => Registration::count(), 'guestCount' => Registration::sum('guest_count'),
-            'sessions' => EventSession::withCount('registrations')->withSum('registrations', 'guest_count')->orderBy('local_date')->orderBy('local_start_time')->get(),
+            'registrationCount' => Registration::whereNull('cancelled_at')->count(), 'guestCount' => Registration::whereNull('cancelled_at')->sum('guest_count'),
+            'checkedInCount' => Registration::whereNull('cancelled_at')->whereNotNull('checked_in_at')->count(),
+            'sessions' => EventSession::withCount(['registrations' => fn ($query) => $query->whereNull('cancelled_at')])->withSum(['registrations' => fn ($query) => $query->whereNull('cancelled_at')], 'guest_count')->orderBy('local_date')->orderBy('local_start_time')->get(),
             'emailCounts' => ConfirmationEmail::selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
             'registrationsByUrl' => $registrationsByUrl,
         ]);

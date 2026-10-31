@@ -1,17 +1,11 @@
 <?php
 
 return [
-    'domain_sessions' => [
-        'special_host' => 'registration.sprops.hk.uhresidencesbangkok.com',
-        'public_host' => 'registration.hk.uhresidencesbangkok.com',
-        'preview_hosts' => ['uh-registration.test', 'localhost', '127.0.0.1', 'g-dev.top', 'registration.uhhk.uhresidencesbangkok.com'],
-        'special' => ['date' => '2026-11-14', 'time' => '11:00:00'],
-    ],
     // Provisional country/title/consent rules require client sign-off before production.
     'policy_confirmed' => env('REGISTRATION_POLICY_CONFIRMED', false),
     'timezone' => env('EVENT_TIMEZONE', 'Asia/Hong_Kong'),
     'guests_include_registrant' => env('GUESTS_INCLUDE_REGISTRANT', true),
-    'mail_mode' => env('REGISTRATION_MAIL_MODE', 'local'),
+    'mail_mode' => env('REGISTRATION_MAIL_MODE', 'send'),
     'venue' => 'Sky Lounge, 49/F Upper House Hong Kong, 88 Queensway, Admiralty, Hong Kong',
     'titles' => ['Mr.', 'Mrs.', 'Ms.', 'Dr.'],
     'countries' => [

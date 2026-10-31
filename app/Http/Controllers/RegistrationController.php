@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Actions\RegisterForSession;
 use App\Http\Requests\StoreRegistrationRequest;
+use App\Jobs\SendRegistrationConfirmation;
 use App\Models\Registration;
 use App\Support\RegistrationDomains;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -31,10 +33,21 @@ class RegistrationController extends Controller
         $request->session()->put('registration_form_policies', $policies);
 
         return response()->view('public.registration', [
-            'sessions' => app(RegistrationDomains::class)->sessions($request->getHost())->orderBy('local_date')->orderBy('local_start_time')->get(),
+            'sessions' => app(RegistrationDomains::class)->sessions($request->getHost())->withExists(['registrations as is_booked' => fn ($query) => $query->whereNull('cancelled_at')])->orderBy('local_date')->orderBy('local_start_time')->get(),
             'idempotencyToken' => $token, 'titles' => config('registration.titles'), 'countries' => config('registration.countries'),
             'referralSources' => config('registration.referral_sources'), 'consents' => $policies[hash('sha256', $token)],
         ])->header('Cache-Control', 'no-store');
+    }
+
+    public function availability(): JsonResponse
+    {
+        $sessions = app(RegistrationDomains::class)->sessions('')
+            ->withExists(['registrations as is_booked' => fn ($query) => $query->whereNull('cancelled_at')])->get();
+
+        return response()->json($sessions->map(fn ($session): array => [
+            'id' => $session->id, 'available' => $session->is_open && ! $session->is_booked,
+            'status' => $session->is_booked ? 'Booked' : ($session->is_open ? 'Available' : 'Closed'),
+        ]))->header('Cache-Control', 'no-store');
     }
 
     public function store(StoreRegistrationRequest $request, RegisterForSession $action)
@@ -62,7 +75,15 @@ class RegistrationController extends Controller
         }
         $request->session()->put('confirmed_registration_id', $registration->id);
 
-        // The durable pending email record is dispatched by the scheduler; no queue failure can undo this booking.
+        try {
+            $email = $registration->confirmationEmails()->where('status', 'pending')->first();
+            if ($email) {
+                SendRegistrationConfirmation::dispatch($email->id)->afterCommit();
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Confirmation dispatch deferred to scheduler.', ['registration_id' => $registration->id]);
+        }
+
         return redirect()->route('registration.thank-you');
     }
 

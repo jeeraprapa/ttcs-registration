@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\ConsentDefinition;
 use App\Models\EventSession;
+use App\Support\EventSchedule;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -12,8 +13,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(AdminUserSeeder::class);
 
-        foreach (['2026-11-14' => ['11:30:00', '15:00:00'], '2026-11-15' => ['11:00:00', '15:00:00']] as $date => $times) {
-            foreach ($times as $time) {
+        foreach (EventSchedule::dates() as $date) {
+            foreach (EventSchedule::TIMES as $time) {
                 EventSession::firstOrCreate(['event_key' => 'uh-hk-preview-2026', 'local_date' => $date, 'local_start_time' => $time],
                     ['timezone' => config('registration.timezone'), 'venue' => config('registration.venue'), 'is_open' => true, 'capacity' => null]);
             }

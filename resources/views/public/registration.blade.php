@@ -1,6 +1,5 @@
 @extends('layouts.public')
 @section('content')
-    @php($isSpecialHost = request()->getHost() === config('registration.domain_sessions.special_host'))
     <section class="event-intro">
         <div class="event-copy"><h1>UPPER HOUSE RESIDENCES<br>HONG KONG PRIVATE PREVIEW
             </h1>
@@ -14,7 +13,7 @@
                 exceptional address.</p></div>
         <div class="event-meta">
             <div><p class="eyebrow">Event details</p>
-                <p>{{ $isSpecialHost ? 'Saturday, 14 November 2026 at 11:00 AM' : '14 – 15 November 2026 | 11:00 AM – 6:00 PM' }}</p>
+                <p>18 November – 6 December 2026 | Selected dates, 10:00 AM – 5:00 PM</p>
             </div>
             <div><p class="eyebrow">Venue</p>
                 <p>Sky Lounge, 49/F Upper House Hong Kong<br>88 Queensway, Admiralty, Hong Kong</p>
@@ -25,43 +24,59 @@
         <form action="{{ route('registration.store') }}" method="POST"
               data-submit-once>@csrf<input type="hidden" name="idempotency_token"
                                            value="{{ $idempotencyToken }}">@php($selectedDate=old('selected_date',$sessions->first()?->local_date->format('Y-m-d')))
-            @if($isSpecialHost)
-                <input type="hidden" name="selected_date"
-                       value="{{ $sessions->first()?->local_date->format('Y-m-d') }}">
-                <input type="hidden" name="event_session_id"
-                       value="{{ $sessions->first()?->id }}">
-
-            @else
-                <h2 class="section-label">SELECT YOUR PREFERRED SESSION</h2>
-                <div class="dates" role="group"
-                     aria-label="Event date">@foreach($sessions->unique(fn($s)=>$s->local_date->format('Y-m-d')) as $day)
-                        <button type="button" class="date-tab"
-                                data-session-date="{{ $day->local_date->format('Y-m-d') }}"
-                                aria-pressed="{{ $selectedDate===$day->local_date->format('Y-m-d')?'true':'false' }}">{{ strtoupper($day->local_date->format('l, j F Y')) }}</button>
-                    @endforeach</div><input type="hidden" id="selected_date"
-                                            name="selected_date"
-                                            value="{{ $selectedDate }}">
-                <div class="grid-two">
-                    <div class="field"><label for="event_session_id">Time session
-                            *</label><select id="event_session_id" name="event_session_id"
-                                             required>
-                            <option value="">Choose an option
-                            </option>@foreach($sessions as $session)
-                                <option value="{{ $session->id }}"
-                                        data-date="{{ $session->local_date->format('Y-m-d') }}" @selected(old('event_session_id')==$session->id) @disabled(!$session->is_open)>{{ \Carbon\Carbon::parse($session->local_start_time)->format('h.ia') }}{{ !$session->is_open?' — Closed':'' }}</option>
-                            @endforeach</select></div>
-                    <div class="field"><label for="guest_count">Number of guests *</label><select
-                            id="guest_count" name="guest_count" required>
-                            <option value="">Choose an option
-                            </option>@foreach(range(1,4) as $count)
-                                <option
-                                    value="{{ $count }}" @selected(old('guest_count')==$count)>{{ $count }}</option>
-                            @endforeach</select></div>
-                </div><p class="quiet availability">All sessions are open for
-                    registration. Place are limited.</p>
-            @endif
+            <section class="session-picker" aria-labelledby="session-heading">
+                <div class="session-picker-heading">
+                    <h2 class="section-label" id="session-heading">SELECT YOUR PREFERRED SESSION</h2>
+                    <p>Choose a date, then reserve your preferred time.</p>
+                </div>
+                <div class="session-step-label"><span>01</span> Choose your date</div>
+                <div class="session-months">
+                    @foreach($sessions->unique(fn($session) => $session->local_date->format('Y-m-d'))->groupBy(fn($session) => $session->local_date->format('F Y')) as $month => $days)
+                        <fieldset class="session-month">
+                            <legend>{{ $month }}</legend>
+                            <div class="session-date-grid">
+                                @foreach($days as $day)
+                                    <button type="button" class="date-tab"
+                                            data-session-date="{{ $day->local_date->format('Y-m-d') }}"
+                                            data-date-label="{{ $day->local_date->format('D, j F Y') }}"
+                                            aria-label="{{ $day->local_date->format('l, j F Y') }}"
+                                            aria-pressed="{{ $selectedDate === $day->local_date->format('Y-m-d') ? 'true' : 'false' }}">
+                                        <span class="date-weekday">{{ $day->local_date->format('D') }}</span>
+                                        <span class="date-number">{{ $day->local_date->format('j') }}</span>
+                                        <span class="date-check" aria-hidden="true">✓</span>
+                                    </button>
+                                @endforeach
+                            </div>
+                        </fieldset>
+                    @endforeach
+                </div>
+                <input type="hidden" id="selected_date" name="selected_date" value="{{ $selectedDate }}">
+                <div class="field session-time-field">
+                    <label for="event_session_id" id="session-time-label" class="session-step-label"><span>02</span> Time session * <small>Hong Kong time</small></label>
+                    <select id="event_session_id" name="event_session_id"
+                            data-availability-url="{{ route('registration.availability') }}" required>
+                        <option value="">Choose an option</option>
+                        @foreach($sessions as $session)
+                            <option value="{{ $session->id }}" data-date="{{ $session->local_date->format('Y-m-d') }}"
+                                    data-time-label="{{ \Carbon\Carbon::parse($session->local_start_time)->format('H:i') }}"
+                                    @selected(old('event_session_id') == $session->id)
+                                    @disabled(!$session->is_open || $session->is_booked)>{{ \Carbon\Carbon::parse($session->local_start_time)->format('h.ia') }}{{ $session->is_booked ? ' — Booked' : (!$session->is_open ? ' — Closed' : '') }}</option>
+                        @endforeach
+                    </select>
+                    <div class="session-time-grid" data-time-options role="group" aria-labelledby="session-time-label" hidden></div>
+                    <p class="session-selection" data-session-selection aria-live="polite"></p>
+                </div>
+                <div class="session-legend"><span><i class="legend-available" aria-hidden="true"></i>Available</span><span><i class="legend-booked" aria-hidden="true"></i>Booked / closed</span><span>One booking per session</span></div>
+                <p class="quiet availability" aria-live="polite">Each booking includes 1–4 guests, including yourself.</p>
+            </section>
+            <div class="field guest-count-field"><label for="guest_count">Number of guests *</label><select id="guest_count" name="guest_count" required>
+                <option value="">Choose an option</option>
+                @foreach(range(1,4) as $count)
+                    <option value="{{ $count }}" @selected(old('guest_count') == $count)>{{ $count }} {{ $count === 1 ? 'guest' : 'guests' }}</option>
+                @endforeach
+            </select></div>
             <div class="reserve-intro"><h2 class="section-label">RESERVE YOUR PLACE</h2>
-                <p class="quiet">{{ $isSpecialHost ? 'Please complete the form to confirm your attendance.' : 'Please complete the form below to register for your preferred session.' }}</p>
+                <p class="quiet">Please complete the form below to register for your preferred session.</p>
             </div>
             <div class="grid-name">
                 <div class="field"><label for="title">Title *</label><select id="title"
@@ -98,9 +113,6 @@
                         id="email" name="email" type="email" autocomplete="email"
                         value="{{ old('email') }}" maxlength="254" required></div>
             </div>
-            @if($isSpecialHost)
-<div class="field"><label for="guest_count">Number of guests *</label><select id="guest_count" name="guest_count" required><option value="">Choose an option</option>@foreach(range(1,4) as $count)<option value="{{ $count }}" @selected(old('guest_count')==$count)>{{ $count }}</option>@endforeach</select></div>
-@endif
 <div class="field"><label for="referral_source">How did you hear about us?
                     *</label><select id="referral_source" name="referral_source" required>
                     <option value="">Choose an option
@@ -122,10 +134,10 @@
             <p class="submit-note">By submitting this form, you acknowledge and accept our
                 <a href="https://www.uhresidencesbangkok.com/privacy-policy/"
                    target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
-            </p>@unless($isSpecialHost)
+            </p>
                 <noscript><p>Please enable JavaScript to choose a date and time
                         session.</p></noscript>
-            @endunless</form>
+            </form>
     </div>
     @include('components.field-errors')
 @endsection

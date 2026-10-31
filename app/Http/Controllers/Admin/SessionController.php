@@ -15,7 +15,7 @@ class SessionController extends Controller
     {
         Gate::authorize('manage-admin');
 
-        return view('admin.sessions.index', ['sessions' => EventSession::withCount('registrations')->withSum('registrations', 'guest_count')->orderBy('local_date')->orderBy('local_start_time')->get()]);
+        return view('admin.sessions.index', ['sessions' => EventSession::withCount(['registrations' => fn ($query) => $query->whereNull('cancelled_at')])->withSum(['registrations' => fn ($query) => $query->whereNull('cancelled_at')], 'guest_count')->orderBy('local_date')->orderBy('local_start_time')->get()]);
     }
 
     public function edit(EventSession $session)

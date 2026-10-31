@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exports\RegistrationsExport;
 use App\Http\Controllers\Controller;
+use App\Models\AdminAuditLog;
 use App\Models\EventSession;
 use App\Models\Registration;
 use App\Support\RegistrationDomains;
 use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
@@ -47,8 +50,16 @@ class RegistrationController extends Controller
             'registered_to' => ['nullable', 'date_format:Y-m-d', Rule::when($request->filled('registered_from'), ['after_or_equal:registered_from'])],
             'referral_source' => ['nullable', Rule::in(config('registration.referral_sources'))],
             'registration_url' => ['nullable', Rule::in(RegistrationDomains::REGISTRATION_URLS)],
+            'attendance' => ['nullable', Rule::in(['booked', 'checked_in', 'cancelled'])],
         ]);
         $query = Registration::with('eventSession');
+        if (($filters['attendance'] ?? '') === 'cancelled') {
+            $query->whereNotNull('cancelled_at');
+        } elseif (($filters['attendance'] ?? '') === 'checked_in') {
+            $query->whereNull('cancelled_at')->whereNotNull('checked_in_at');
+        } elseif (($filters['attendance'] ?? '') === 'booked') {
+            $query->whereNull('cancelled_at')->whereNull('checked_in_at');
+        }
         if (! empty($filters['session_id'])) {
             $query->where('event_session_id', $filters['session_id']);
         }
@@ -74,6 +85,25 @@ class RegistrationController extends Controller
         }
 
         return [$query, $filters];
+    }
+
+    public function cancel(Request $request, Registration $registration): RedirectResponse
+    {
+        Gate::authorize('manage-admin');
+        DB::transaction(function () use ($request, $registration): void {
+            $session = EventSession::whereKey($registration->event_session_id)->lockForUpdate()->firstOrFail();
+            $booking = Registration::whereKey($registration->id)->lockForUpdate()->firstOrFail();
+            if ($booking->cancelled_at) {
+                return;
+            }
+            $booking->update(['cancelled_at' => now(), 'cancelled_by' => $request->user('admin')->id, 'active_session_id' => null]);
+            $session->update(['reserved_seats' => max(0, $session->reserved_seats - ($booking->seat_count ?? 0))]);
+            $booking->confirmationEmails()->whereIn('status', ['pending', 'processing'])->update(['status' => 'cancelled', 'processing_token' => null, 'lease_until' => null]);
+            AdminAuditLog::create(['admin_user_id' => $request->user('admin')->id, 'action' => 'registration.cancel',
+                'subject_type' => 'registration', 'subject_id' => $booking->id, 'metadata' => [], 'created_at' => now()]);
+        });
+
+        return back()->with('status', 'Booking cancelled. The session is available again unless manually closed.');
     }
 
     public function show(Registration $registration)

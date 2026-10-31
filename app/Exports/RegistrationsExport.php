@@ -22,6 +22,7 @@ class RegistrationsExport
             $headers = ['Reference', 'Title', 'First name', 'Last name', 'Email', 'Phone country', 'Dial code', 'Phone number', 'Session date', 'Session time', 'Session timezone', 'Guests', 'Referral source', 'Registered at ('.config('registration.timezone').')'];
             $headerStyle = new Style(fontBold: true, backgroundColor: 'DCE6DF');
             $headers[] = 'Registration URL';
+            $headers = [...$headers, 'Booking status', 'Checked in at', 'Cancelled at'];
             $writer->addRow(new Row(array_map(fn ($value) => new StringCell($value, $headerStyle), $headers)));
             // Lazy chunks include relationships without loading the entire result set.
             foreach ($query->reorder()->lazyById(500) as $registration) {
@@ -34,6 +35,9 @@ class RegistrationsExport
                     $registration->referral_source,
                     $registration->created_at->timezone(config('registration.timezone'))->format('Y-m-d H:i:s'),
                     $registration->registration_url,
+                    $registration->cancelled_at ? 'Cancelled' : ($registration->checked_in_at ? 'Checked in' : 'Booked'),
+                    $registration->checked_in_at?->timezone($registration->timezone_snapshot)->format('Y-m-d H:i:s'),
+                    $registration->cancelled_at?->timezone($registration->timezone_snapshot)->format('Y-m-d H:i:s'),
                 ];
                 // Explicit string cells preserve phone numbers and prevent formula injection.
                 $writer->addRow(new Row(array_map(fn ($value) => is_int($value)

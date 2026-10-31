@@ -1,3 +1,10 @@
+# UH Registration agent and skill
+
+- Before implementation, debugging, architecture, or review, read `.ai/agent.md` and `.ai/skills/laravel-mysql/SKILL.md`; apply the maintained role in `.ai/agents/senior-dev.md`.
+- The discoverable repository skill is `.agents/skills/laravel-mysql/SKILL.md` (invoke as `$laravel-mysql`). It loads the maintained `.ai` sources.
+- The project custom agent is `.codex/agents/senior-dev.toml`, named `senior-dev`. Use it when the user requests delegation to that role; its presence does not require spawning a subagent for every task.
+- Read `.ai/system-design.md` for relevant architecture. Optional proposals and historical status do not override confirmed requirements or current code/test evidence.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 

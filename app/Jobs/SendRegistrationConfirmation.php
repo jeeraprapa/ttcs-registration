@@ -27,7 +27,12 @@ class SendRegistrationConfirmation implements ShouldQueue
         $claim = (string) Str::uuid();
         $record = DB::transaction(function () use ($claim) {
             $email = ConfirmationEmail::whereKey($this->confirmationEmailId)->lockForUpdate()->first();
-            if (! $email || in_array($email->status, ['provider_accepted', 'local_preview', 'failed'], true)) {
+            if (! $email || in_array($email->status, ['provider_accepted', 'local_preview', 'failed', 'cancelled'], true)) {
+                return null;
+            }
+            if ($email->registration->cancelled_at) {
+                $email->update(['status' => 'cancelled', 'lease_until' => null, 'processing_token' => null]);
+
                 return null;
             }
             if ($email->status === 'processing' && $email->lease_until?->isFuture()) {

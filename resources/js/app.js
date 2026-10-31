@@ -2,7 +2,90 @@ import 'flag-icons/css/flag-icons.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 const select=document.querySelector('#event_session_id'), date=document.querySelector('#selected_date');
 document.querySelectorAll('[data-field-error]').forEach(error=>{const name=error.dataset.fieldError.replace(/^consents\.(.+)$/,'consents[$1]');const input=document.getElementsByName(name)[0];const target=input?.closest('.field,.consent');if(target){error.hidden=false;error.id='error-'+name.replace(/[^a-z0-9]/gi,'-');target.append(error);input.setAttribute('aria-invalid','true');input.setAttribute('aria-describedby',error.id);}});
-if(select&&date){const choices=[...select.options].slice(1).map(o=>o.cloneNode(true));const update=(value,reset)=>{const previous=reset?'':select.value;select.replaceChildren(new Option('Choose an option',''));choices.filter(o=>o.dataset.date===value).forEach(o=>select.add(o.cloneNode(true)));select.value=previous;date.value=value;document.querySelectorAll('[data-session-date]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sessionDate===value)));};document.querySelectorAll('[data-session-date]').forEach(b=>b.addEventListener('click',()=>update(b.dataset.sessionDate,true)));update(date.value,false);}
+if (select && date) {
+    const choices = [...select.options].slice(1).map(option => option.cloneNode(true));
+    const timeOptions = document.querySelector('[data-time-options]');
+    const selection = document.querySelector('[data-session-selection]');
+    const dateButtons = [...document.querySelectorAll('[data-session-date]')];
+    const renderTimes = () => {
+        if (!timeOptions) return;
+        timeOptions.replaceChildren();
+        [...select.options].slice(1).forEach(option => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'session-time-button';
+            button.disabled = option.disabled;
+            button.setAttribute('aria-pressed', String(option.value === select.value));
+            const time = document.createElement('span');
+            time.textContent = option.dataset.timeLabel;
+            const status = document.createElement('small');
+            status.textContent = option.disabled ? (option.textContent.includes('Booked') ? 'Booked' : 'Closed') : option.value === select.value ? 'Selected ✓' : 'Available';
+            button.append(time, status);
+            button.addEventListener('click', () => {
+                select.value = option.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                const next = timeOptions.querySelector(`[data-time-id="${option.value}"]`);
+                next?.focus({ preventScroll: true });
+            });
+            button.dataset.timeId = option.value;
+            timeOptions.append(button);
+        });
+        if (selection) {
+            const day = dateButtons.find(button => button.dataset.sessionDate === date.value)?.dataset.dateLabel || '';
+            const time = select.selectedOptions[0]?.dataset.timeLabel;
+            selection.textContent = time ? `${day} · ${time} (Hong Kong time)` : `${day} · Choose a time above`;
+            selection.classList.toggle('has-selection', Boolean(time));
+        }
+    };
+    const update = (value, reset) => {
+        const previous = reset ? '' : select.value;
+        select.replaceChildren(new Option('Choose an option', ''));
+        choices.filter(option => option.dataset.date === value).forEach(option => select.add(option.cloneNode(true)));
+        select.value = previous;
+        if (!select.value || select.selectedOptions[0]?.disabled) select.value = '';
+        date.value = value;
+        dateButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.sessionDate === value)));
+        renderTimes();
+    };
+    dateButtons.forEach(button => button.addEventListener('click', () => update(button.dataset.sessionDate, true)));
+    select.addEventListener('change', renderTimes);
+    if (timeOptions) {
+        timeOptions.hidden = false;
+        select.classList.add('session-native-select');
+        select.tabIndex = -1;
+        select.addEventListener('invalid', event => {
+            event.preventDefault();
+            if (selection) selection.textContent = 'Please choose an available time to continue.';
+            timeOptions.querySelector('button:not(:disabled)')?.focus();
+        });
+    }
+    update(date.value, false);
+    if (select.dataset.availabilityUrl) {
+        const refreshAvailability = async () => {
+            if (document.hidden) return;
+            try {
+                const response = await fetch(select.dataset.availabilityUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+                if (!response.ok) return;
+                const statuses = new Map((await response.json()).map(slot => [String(slot.id), slot]));
+                choices.forEach(option => {
+                    const status = statuses.get(option.value);
+                    option.dataset.label ||= option.textContent.replace(/ — (Booked|Closed)$/, '');
+                    option.disabled = !status?.available;
+                    option.textContent = option.dataset.label + (status?.available ? '' : ` — ${status?.status || 'Closed'}`);
+                });
+                const previous = select.value;
+                const focusedId = timeOptions?.contains(document.activeElement) ? document.activeElement.dataset.timeId : null;
+                update(date.value, false);
+                if (focusedId) timeOptions.querySelector(`[data-time-id="${focusedId}"]:not(:disabled)`)?.focus({ preventScroll: true });
+                if (previous && !select.value) {
+                    document.querySelector('.availability').textContent = 'Your selected session is no longer available. Please select another session.';
+                }
+            } catch { /* Availability is checked again on the server when submitting. */ }
+        };
+        setInterval(refreshAvailability, 15000);
+        window.addEventListener('focus', refreshAvailability);
+    }
+}
 const country=document.querySelector('#phone_country_code'),dial=document.querySelector('#phone_dial_code');if(country&&dial){const update=()=>dial.value=country.selectedOptions[0]?.dataset.dialCode||'';country.addEventListener('change',update);update();}
 if (country) {
     const picker = document.createElement('div');

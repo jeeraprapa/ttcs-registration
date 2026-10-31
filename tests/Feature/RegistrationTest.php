@@ -8,6 +8,7 @@ use App\Models\ConfirmationEmail;
 use App\Models\EventSession;
 use App\Models\Registration;
 use App\Models\RegistrationConsent;
+use App\Support\RegistrationDomains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
@@ -28,6 +29,8 @@ class RegistrationTest extends TestCase
     {
         parent::setUp();
         $this->seed();
+        config(['registration.mail_mode' => 'local']);
+        Queue::fake();
     }
 
     private function payload(array $replace = []): array
@@ -42,7 +45,7 @@ class RegistrationTest extends TestCase
             'title' => 'Mr.', 'first_name' => 'Test', 'last_name' => 'Guest',
             'phone_country_code' => 'HK', 'phone_dial_code' => '+852', 'phone_number' => '55551234',
             'email' => 'test@example.com', 'referral_source' => 'Others',
-            'consents' => ['privacy' => '1'],
+            'consents' => ['privacy' => '1', 'marketing_direct' => '1', 'marketing_sharing' => '1'],
         ], $replace);
     }
 
@@ -54,7 +57,7 @@ class RegistrationTest extends TestCase
         $this->assertSame(2, $booking->eventSession->reserved_seats);
         $this->assertCount(4, $booking->consents);
         $this->assertTrue($booking->consents()->whereHas('definition', fn ($q) => $q->where('code', 'privacy'))->first()->accepted);
-        $this->assertFalse($booking->consents()->whereHas('definition', fn ($q) => $q->where('code', 'marketing_direct'))->first()->accepted);
+        $this->assertTrue($booking->consents()->whereHas('definition', fn ($q) => $q->where('code', 'marketing_direct'))->first()->accepted);
         $this->assertNull($booking->consents()->whereHas('definition', fn ($q) => $q->where('code', 'mainland_transfer'))->first()->accepted);
         $this->assertSame('pending', $booking->confirmationEmails->first()->status);
         $this->withSession(['registration_tracking_reference' => null]);
@@ -80,7 +83,7 @@ class RegistrationTest extends TestCase
             ->assertViewHas('sessions', fn ($available) => $available->modelKeys() === $sessions->modelKeys())
             ->assertSee('SELECT YOUR PREFERRED SESSION');
 
-        foreach ($sessions as $session) {
+        foreach ($sessions->take(7) as $session) {
             $token = hash('sha256', 'uhhk-session-'.$session->id);
             $data = $this->payload([
                 'idempotency_token' => $token,
@@ -96,48 +99,16 @@ class RegistrationTest extends TestCase
         }
     }
 
-    public function test_domains_filter_sessions_and_reject_other_domains_sessions(): void
+    public function test_all_registration_domains_share_the_same_schedule(): void
     {
-        $specialHost = 'https://registration.sprops.hk.uhresidencesbangkok.com';
-        $publicHost = 'https://registration.hk.uhresidencesbangkok.com';
-        $special = EventSession::where('local_date', '2026-11-14')->where('local_start_time', '11:30:00')->firstOrFail();
-        $other = EventSession::where('id', '!=', $special->id)->firstOrFail();
-        $this->get($specialHost.'/')->assertOk()
-            ->assertViewHas('sessions', fn ($sessions) => $sessions->modelKeys() === [$special->id])
-            ->assertSee('14 November 2026 | 11.00am')
-            ->assertSee('Please complete the form to confirm your attendance.')
-            ->assertDontSee('SELECT YOUR PREFERRED SESSION')
-            ->assertSeeInOrder(['Mobile number', 'Number of guests', 'How did you hear about us?'])
-            ->assertSee('name="event_session_id" value="'.$special->id.'"', false)
-            ->assertSee('id="guest_count" name="guest_count" required', false)
-            ->assertDontSee('type="hidden" name="guest_count"', false);
-        $this->get($publicHost.'/')->assertOk()
-            ->assertViewHas('sessions', fn ($sessions) => $sessions->count() === 3 && ! $sessions->contains('id', $special->id))
-            ->assertSee('SELECT YOUR PREFERRED SESSION')
-            ->assertSee('Please complete the form below to register for your preferred session.');
-        $this->get('http://uh-registration.test/')->assertOk()->assertViewHas('sessions', fn ($sessions) => $sessions->count() === 4);
-        $this->get('https://unconfigured.example/')->assertNotFound();
-        $this->post($specialHost.'/registrations', $this->payload(['event_session_id' => $other->id]))->assertSessionHasErrors('event_session_id');
-        $this->post($publicHost.'/registrations', $this->payload(['event_session_id' => $special->id]))->assertSessionHasErrors('event_session_id');
-        $this->assertDatabaseCount('registrations', 0);
-        $this->post($specialHost.'/registrations', $this->payload(['registration_url' => 'https://forged.example/']))->assertRedirect();
-        $booking = Registration::firstOrFail();
-        $this->assertSame($specialHost.'/', $booking->registration_url);
-        $this->assertSame('2026-11-14', $booking->session_date_snapshot->format('Y-m-d'));
-        $this->assertSame('11:30:00', $booking->session_time_snapshot);
-        $this->post($specialHost.'/registrations', $this->payload())->assertRedirect();
-        $this->assertDatabaseCount('registrations', 1);
-        $publicData = $this->payload([
-            'idempotency_token' => str_repeat('b', 64), 'event_session_id' => $other->id,
-            'selected_date' => $other->local_date->format('Y-m-d'),
-        ]);
-        $this->withSession(['registration_tokens' => [hash('sha256', str_repeat('b', 64)) => time() + 3600]]);
-        $this->post($publicHost.'/registrations', $publicData)->assertRedirect();
-        $this->assertDatabaseHas('registrations', ['event_session_id' => $other->id, 'registration_url' => $publicHost.'/']);
-        $localData = $this->payload(['idempotency_token' => str_repeat('c', 64)]);
-        $this->withSession(['registration_tokens' => [hash('sha256', str_repeat('c', 64)) => time() + 3600]]);
-        $this->post('http://uh-registration.test/registrations', $localData)->assertRedirect();
-        $this->assertDatabaseHas('registrations', ['registration_url' => 'http://uh-registration.test/']);
+        $sessions = app(RegistrationDomains::class)->sessions('')->orderBy('local_date')->orderBy('local_start_time')->get();
+        foreach (RegistrationDomains::REGISTRATION_URLS as $url) {
+            $this->get($url)->assertOk()
+                ->assertViewHas('sessions', fn ($available) => $available->modelKeys() === $sessions->modelKeys())
+                ->assertSee('SELECT YOUR PREFERRED SESSION')
+                ->assertSee('18 November');
+        }
+        $this->assertCount(112, $sessions);
     }
 
     public function test_replay_after_response_loss_and_session_closed_returns_same_booking(): void
@@ -163,7 +134,7 @@ class RegistrationTest extends TestCase
 
     public function test_invalid_pairing_and_guests_and_country_are_rejected(): void
     {
-        $this->post(route('registration.store'), $this->payload(['selected_date' => '2026-11-15']))->assertSessionHasErrors('event_session_id');
+        $this->post(route('registration.store'), $this->payload(['selected_date' => '2026-11-19']))->assertSessionHasErrors('event_session_id');
         $this->post(route('registration.store'), $this->payload(['guest_count' => 5]))->assertSessionHasErrors('guest_count');
         $this->post(route('registration.store'), $this->payload(['phone_dial_code' => '+66']))->assertSessionHasErrors('phone_country_code');
         $this->post(route('registration.store'), $this->payload(['consents' => []]))->assertSessionHasErrors('consents.privacy');

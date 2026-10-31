@@ -15,18 +15,7 @@ class RegistrationDomains
 
     public function sessions(string $host): Builder
     {
-        $query = EventSession::query();
-        $special = config('registration.domain_sessions.special');
-        if ($host === config('registration.domain_sessions.special_host')) {
-            return $query->where('local_date', $special['date'])->where('local_start_time', $special['time']);
-        }
-        if ($host === config('registration.domain_sessions.public_host')) {
-            return $query->where(fn ($query) => $query->where('local_date', '!=', $special['date'])
-                ->orWhere('local_start_time', '!=', $special['time']));
-        }
-        if (in_array($host, config('registration.domain_sessions.preview_hosts'), true)) {
-            return $query;
-        }
-        abort(404);
+        return EventSession::query()->where('event_key', EventSchedule::EVENT_KEY)
+            ->whereIn('local_date', EventSchedule::dates())->whereIn('local_start_time', EventSchedule::TIMES);
     }
 }

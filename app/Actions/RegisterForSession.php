@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Models\ConsentDefinition;
 use App\Models\EventSession;
 use App\Models\Registration;
+use App\Support\RegistrationDomains;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -47,8 +48,11 @@ class RegisterForSession
                     return $this->replay($existing, $fingerprint);
                 }
                 $this->validateBusinessInput($data, $definitions);
-                if (! $session || $session->local_date->format('Y-m-d') !== $data['selected_date']) {
+                if (! $session || ! app(RegistrationDomains::class)->sessions('')->whereKey($session->id)->exists() || $session->local_date->format('Y-m-d') !== $data['selected_date']) {
                     throw ValidationException::withMessages(['event_session_id' => 'Please select a valid session for your preferred day.']);
+                }
+                if ($session->registrations()->whereNull('cancelled_at')->lockForUpdate()->first()) {
+                    throw ValidationException::withMessages(['event_session_id' => 'This session is already booked. Please select another session.']);
                 }
                 if (! $session->is_open) {
                     throw ValidationException::withMessages(['event_session_id' => 'This session is currently closed for registration.']);
@@ -59,7 +63,7 @@ class RegisterForSession
                     throw ValidationException::withMessages(['event_session_id' => 'This session has no remaining availability. Please select another session.']);
                 }
                 $registration = Registration::create([
-                    'reference' => (string) Str::uuid(), 'event_session_id' => $session->id,
+                    'reference' => (string) Str::uuid(), 'event_session_id' => $session->id, 'active_session_id' => $session->id,
                     'registration_url' => $data['registration_url'] ?? null,
                     ...array_intersect_key($data, array_flip(['title', 'first_name', 'last_name', 'phone_country_code', 'phone_dial_code', 'phone_number', 'email', 'referral_source', 'guest_count'])),
                     'seat_count' => $seats, 'session_date_snapshot' => $session->local_date->format('Y-m-d'),
@@ -92,6 +96,9 @@ class RegisterForSession
 
     private function replay(Registration $registration, string $fingerprint): Registration
     {
+        if ($registration->cancelled_at) {
+            throw ValidationException::withMessages(['idempotency_token' => 'This booking has been cancelled. Please start a new registration.']);
+        }
         if (! hash_equals($registration->request_fingerprint, $fingerprint)) {
             throw ValidationException::withMessages(['idempotency_token' => 'This form was already submitted with different details. Please start a new registration.']);
         }

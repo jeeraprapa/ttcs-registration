@@ -8,6 +8,7 @@ use App\Models\EventSession;
 use App\Support\RegistrationDomains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\ViewErrorBag;
 use OpenSpout\Reader\XLSX\Reader;
 use Tests\TestCase;
 
@@ -31,7 +32,7 @@ class AdminTest extends TestCase
     {
         $this->actingAs($this->admin(), 'admin');
         $this->view('admin.dashboard', [
-            'registrationCount' => 0, 'guestCount' => 0, 'sessions' => collect(),
+            'registrationCount' => 0, 'guestCount' => 0, 'sessions' => collect(), 'errors' => new ViewErrorBag,
         ])->assertSee('Event overview')
             ->assertSee('Registration URL summary is currently unavailable.')
             ->assertSee('Registration by session');
@@ -123,7 +124,7 @@ class AdminTest extends TestCase
             'selected_date' => $session->local_date->format('Y-m-d'), 'guest_count' => 1,
             'title' => 'Mr.', 'first_name' => 'Boundary', 'last_name' => 'Test',
             'phone_country_code' => 'HK', 'phone_dial_code' => '+852', 'phone_number' => '55551234',
-            'email' => 'boundary@example.com', 'referral_source' => 'Others', 'consents' => ['privacy' => true],
+            'email' => 'boundary@example.com', 'referral_source' => 'Others', 'consents' => ['privacy' => true, 'marketing_direct' => true, 'marketing_sharing' => true],
         ]);
         $booking->update(['created_at' => '2026-10-09 17:00:00']); // 10 October, 01:00 in Hong Kong.
         $admin = $this->admin();
@@ -143,6 +144,7 @@ class AdminTest extends TestCase
         $urls = RegistrationDomains::REGISTRATION_URLS;
         $bookings = [];
         foreach ([...$urls, null] as $index => $url) {
+            $session = EventSession::orderBy('id')->skip($index)->firstOrFail();
             $bookings[] = app(RegisterForSession::class)->execute([
                 'idempotency_token' => hash('sha256', 'url-filter-'.$index),
                 'event_session_id' => $session->id, 'selected_date' => $session->local_date->format('Y-m-d'),
@@ -195,12 +197,13 @@ class AdminTest extends TestCase
         $this->seed();
         $session = EventSession::firstOrFail();
         for ($i = 0; $i < 22; $i++) {
+            $session = EventSession::orderBy('id')->skip($i)->firstOrFail();
             app(RegisterForSession::class)->execute([
                 'idempotency_token' => hash('sha256', 'export-'.$i), 'event_session_id' => $session->id,
                 'selected_date' => $session->local_date->format('Y-m-d'), 'guest_count' => 2,
                 'title' => 'Mr.', 'first_name' => $i === 21 ? 'Excluded' : '=1+1', 'last_name' => 'Export',
                 'phone_country_code' => 'HK', 'phone_dial_code' => '+852', 'phone_number' => '05551234',
-                'email' => 'export'.$i.'@example.test', 'referral_source' => 'Others', 'consents' => ['privacy' => true],
+                'email' => 'export'.$i.'@example.test', 'referral_source' => 'Others', 'consents' => ['privacy' => true, 'marketing_direct' => true, 'marketing_sharing' => true],
             ]);
         }
         $this->actingAs($this->admin(), 'admin')->withSession(['admin_password_version' => 1]);
@@ -231,8 +234,8 @@ class AdminTest extends TestCase
             $this->assertSame($session->timezone, $rows[1][10]);
             $this->assertSame(2, $rows[1][11]);
             $this->assertNotContains('Email status', $rows[0]);
-            $this->assertCount(15, $rows[0]);
-            $this->assertCount(15, $rows[1]);
+            $this->assertCount(18, $rows[0]);
+            $this->assertCount(18, $rows[1]);
             $this->assertSame('Registered at ('.config('registration.timezone').')', $rows[0][13]);
             $this->assertSame('Registration URL', $rows[0][14]);
             $zip = new \ZipArchive;
