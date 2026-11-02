@@ -1,4 +1,6 @@
+import { enforceExternalBrowser } from './line-browser.js';
 import './check-in-scanner.js';
+enforceExternalBrowser();
 import 'flag-icons/css/flag-icons.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 const select=document.querySelector('#event_session_id'), date=document.querySelector('#selected_date');

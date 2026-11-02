@@ -2176,7 +2176,7 @@
     "src": "node_modules/flag-icons/flags/4x3/zw.svg"
   },
   "node_modules/jsqr/dist/jsQR.js": {
-    "file": "assets/jsQR-CMllSKYG.js",
+    "file": "assets/jsQR-CYK9mk3m.js",
     "name": "jsQR",
     "src": "node_modules/jsqr/dist/jsQR.js",
     "isDynamicEntry": true,
@@ -2185,7 +2185,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-5CytT6nv.css",
+    "file": "assets/app-kN9AGsJY.css",
     "name": "app",
     "names": [
       "app.css"
@@ -2194,7 +2194,7 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-BMRmIBmG.js",
+    "file": "assets/app-Bwtx54Op.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,

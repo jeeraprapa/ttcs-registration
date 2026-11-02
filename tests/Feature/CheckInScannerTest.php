@@ -107,13 +107,18 @@ class CheckInScannerTest extends TestCase
     {
         $booking = $this->booking();
         $this->signIn();
-        $booking->update(['checked_in_at' => now()]);
+        $booking->update(['checked_in_at' => '2026-11-01 09:37:00']);
+        $checkedInTime = $booking->fresh()->checked_in_at->timezone($booking->timezone_snapshot)->format('j M Y H:i');
         $url = app(RegistrationQrCode::class)->url($booking);
         $this->postJson(route('admin.check-ins.resolve'), ['qr' => $url])->assertOk();
         $this->get($url)->assertOk()->assertSee('Already checked in:')->assertDontSee('Confirm check-in');
+        $this->get(route('admin.registrations.index'))->assertOk()->assertSee($checkedInTime);
         $booking->update(['cancelled_at' => now(), 'active_session_id' => null]);
         $this->postJson(route('admin.check-ins.resolve'), ['qr' => $url])->assertOk();
         $this->get($url)->assertOk()->assertSee('admission unavailable')->assertDontSee('Confirm check-in');
+        $this->get(route('admin.registrations.index'))->assertOk()->assertSee('Cancelled')->assertDontSee($checkedInTime);
+        $this->get(route('admin.registrations.show', $booking))->assertOk()->assertSee('Cancelled')->assertDontSee('Checked in:')->assertDontSee($checkedInTime);
+        $this->assertNotNull($booking->fresh()->checked_in_at);
     }
 
     public function test_browser_decoder_reads_the_registration_png_qr(): void
