@@ -1,0 +1,79 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Mail\Message;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
+use Illuminate\View\View;
+use Throwable;
+
+class TestMailController extends Controller
+{
+    public function create(): View
+    {
+        Gate::authorize('manage-admin');
+
+        return view('admin.test-mail', ['mailSettings' => [
+            'host' => config('mail.mailers.smtp.host'),
+            'port' => config('mail.mailers.smtp.port'),
+            'scheme' => config('mail.mailers.smtp.scheme') ?: 'smtp',
+            'username' => config('mail.mailers.smtp.username'),
+            'from_address' => config('mail.from.address'),
+            'from_name' => config('mail.from.name'),
+        ], 'hasSavedPassword' => filled(config('mail.mailers.smtp.password'))]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        Gate::authorize('manage-admin');
+        $data = $request->validate([
+            'email' => ['required', 'string', 'email:rfc', 'max:254'],
+            'host' => ['required', 'string', 'max:253', 'regex:/^[a-zA-Z0-9.\\:\\[\\]-]+$/'],
+            'port' => ['required', 'integer', 'between:1,65535'],
+            'scheme' => ['required', Rule::in(['smtp', 'smtps'])],
+            'username' => ['required', 'string', 'max:254', 'not_regex:/[\\r\\n]/'],
+            'password' => ['nullable', 'string', 'max:4096', Rule::requiredIf(
+                fn (): bool => strcasecmp((string) $request->input('host'), (string) config('mail.mailers.smtp.host')) !== 0
+                    || $request->input('username') !== config('mail.mailers.smtp.username')
+                    || blank(config('mail.mailers.smtp.password'))
+            )],
+            'from_address' => ['required', 'string', 'email:rfc', 'max:254'],
+            'from_name' => ['nullable', 'string', 'max:150', 'not_regex:/[\\r\\n]/'],
+        ]);
+        $password = $data['password'] ?? config('mail.mailers.smtp.password');
+        $safeInput = $request->except(['password', '_token']);
+
+        try {
+            $mailer = Mail::build([
+                'transport' => 'smtp', 'host' => $data['host'], 'port' => (int) $data['port'],
+                'scheme' => $data['scheme'], 'username' => $data['username'], 'password' => $password,
+                'timeout' => 20, 'require_tls' => true,
+            ]);
+            $mailer->raw('This is a test email from the Upper House Residences registration admin. No booking has been created.', function (Message $message) use ($data): void {
+                $message->from($data['from_address'], $data['from_name'] ?? null)->to($data['email'])->subject('[TEST] Upper House registration - admin email test');
+            });
+        } catch (Throwable $exception) {
+            $secrets = array_filter([
+                $password,
+                config('mail.mailers.smtp.password'),
+                config('mail.mailers.smtp.url'),
+            ], fn ($value): bool => is_string($value) && $value !== '');
+            $redactions = [];
+            foreach ($secrets as $secret) {
+                $redactions = [...$redactions, $secret, rawurlencode($secret), base64_encode($secret)];
+            }
+            $error = str_replace($redactions, '[redacted]', $exception->getMessage());
+
+            return redirect()->route('admin.send-testmail')->withInput($safeInput)->withErrors([
+                'mail' => 'Email could not be sent: '.mb_substr($error, 0, 2000),
+            ]);
+        }
+
+        return redirect()->route('admin.send-testmail')->withInput($safeInput)->with('status', 'Test email accepted by the configured mail transport. Check the recipient inbox and spam folder; inbox delivery is not yet confirmed.');
+    }
+}
