@@ -4,31 +4,35 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ConfirmationEmail;
-use App\Models\EventSession;
 use App\Models\Registration;
 use App\Support\RegistrationDomains;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __invoke()
+    public function __invoke(): View
     {
         Gate::authorize('manage-admin');
-
-        $urlCounts = Registration::selectRaw('registration_url, COUNT(*) as bookings, SUM(guest_count) as guests')
-            ->groupBy('registration_url')->get()->keyBy('registration_url');
-        $registrationsByUrl = collect(RegistrationDomains::REGISTRATION_URLS)->map(function (string $url) use ($urlCounts): array {
-            $counts = collect([$urlCounts->get($url), $urlCounts->get(rtrim($url, '/'))])->filter();
-
-            return ['url' => $url, 'bookings' => (int) $counts->sum('bookings'), 'guests' => (int) $counts->sum('guests')];
-        });
+        $sessions = app(RegistrationDomains::class)->sessions('')
+            ->withCount(['registrations' => fn ($query) => $query->whereNull('cancelled_at')])
+            ->withSum(['registrations' => fn ($query) => $query->whereNull('cancelled_at')], 'guest_count')
+            ->orderBy('local_date')->orderBy('local_start_time')->get();
+        $sessionIds = $sessions->modelKeys();
+        $active = Registration::whereIn('event_session_id', $sessionIds)->whereNull('cancelled_at');
+        $bookedSessionCount = $sessions->filter(fn ($session) => $session->registrations_count > 0)->count();
+        $availableSessionCount = $sessions->filter(fn ($session) => $session->is_open && $session->registrations_count === 0)->count();
 
         return view('admin.dashboard', [
-            'registrationCount' => Registration::whereNull('cancelled_at')->count(), 'guestCount' => Registration::whereNull('cancelled_at')->sum('guest_count'),
-            'checkedInCount' => Registration::whereNull('cancelled_at')->whereNotNull('checked_in_at')->count(),
-            'sessions' => EventSession::withCount(['registrations' => fn ($query) => $query->whereNull('cancelled_at')])->withSum(['registrations' => fn ($query) => $query->whereNull('cancelled_at')], 'guest_count')->orderBy('local_date')->orderBy('local_start_time')->get(),
-            'emailCounts' => ConfirmationEmail::selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
-            'registrationsByUrl' => $registrationsByUrl,
+            'registrationCount' => (clone $active)->count(), 'guestCount' => (clone $active)->sum('guest_count'),
+            'checkedInCount' => (clone $active)->whereNotNull('checked_in_at')->count(),
+            'cancelledCount' => Registration::whereIn('event_session_id', $sessionIds)->whereNotNull('cancelled_at')->count(),
+            'sessions' => $sessions, 'bookedSessionCount' => $bookedSessionCount,
+            'availableSessionCount' => $availableSessionCount,
+            'closedSessionCount' => $sessions->count() - $bookedSessionCount - $availableSessionCount,
+            'emailCounts' => ConfirmationEmail::whereHas('registration', fn ($query) => $query->whereIn('event_session_id', $sessionIds)->whereNull('cancelled_at'))
+                ->selectRaw('status, COUNT(*) as total')->groupBy('status')->pluck('total', 'status'),
+            'recentRegistrations' => Registration::whereIn('event_session_id', $sessionIds)->latest('id')->limit(5)->get(),
         ]);
     }
 }

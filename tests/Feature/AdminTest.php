@@ -7,7 +7,6 @@ use App\Models\AdminUser;
 use App\Models\EventSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\ViewErrorBag;
 use OpenSpout\Reader\XLSX\Reader;
 use Tests\TestCase;
 
@@ -27,14 +26,49 @@ class AdminTest extends TestCase
         return AdminUser::create(['name' => 'Test Admin', 'email' => 'admin@example.com', 'password' => 'Synthetic!Pass123']);
     }
 
-    public function test_dashboard_view_handles_missing_url_summary(): void
+    public function test_dashboard_handles_no_sessions_or_bookings(): void
     {
-        $this->actingAs($this->admin(), 'admin');
-        $this->view('admin.dashboard', [
-            'registrationCount' => 0, 'guestCount' => 0, 'sessions' => collect(), 'errors' => new ViewErrorBag,
-        ])->assertSee('Event overview')
-            ->assertSee('Registration URL summary is currently unavailable.')
-            ->assertSee('Registration by session');
+        EventSession::query()->delete();
+        $this->actingAs($this->admin(), 'admin')->withSession(['admin_password_version' => 1]);
+        $this->get(route('admin.dashboard'))->assertOk()->assertSee('Event overview')
+            ->assertSee('No event sessions configured.')->assertSee('No registrations yet.')
+            ->assertViewHas('registrationCount', 0)->assertViewHas('availableSessionCount', 0);
+    }
+
+    public function test_dashboard_counts_active_bookings_and_shows_current_schedule_availability(): void
+    {
+        $this->seed();
+        $admin = $this->admin();
+        $this->actingAs($admin, 'admin')->withSession(['admin_password_version' => 1]);
+        $sessions = EventSession::orderBy('local_date')->orderBy('local_start_time')->take(4)->get();
+        $bookings = [];
+        foreach ([2, 3, 4] as $index => $guestCount) {
+            $session = $sessions[$index];
+            $bookings[] = app(RegisterForSession::class)->execute([
+                'idempotency_token' => hash('sha256', 'overview-'.$index), 'event_session_id' => $session->id,
+                'selected_date' => $session->local_date->format('Y-m-d'), 'guest_count' => $guestCount,
+                'title' => 'Mr.', 'first_name' => 'Overview', 'last_name' => 'Guest',
+                'phone_country_code' => 'HK', 'phone_dial_code' => '+852', 'phone_number' => '55551234',
+                'email' => 'overview'.$index.'@example.test', 'referral_source' => 'Others',
+                'consents' => ['privacy' => true, 'marketing_direct' => true, 'marketing_sharing' => true],
+            ]);
+        }
+        $bookings[0]->update(['checked_in_at' => now(), 'checked_in_by' => $admin->id]);
+        $bookings[0]->confirmationEmails()->update(['status' => 'failed']);
+        $this->post(route('admin.registrations.cancel', $bookings[1]))->assertRedirect();
+        $sessions[3]->update(['is_open' => false]);
+        EventSession::create(['event_key' => 'uh-hk-preview-2026', 'local_date' => '2026-11-14',
+            'local_start_time' => '11:30:00', 'timezone' => config('registration.timezone'),
+            'venue' => config('registration.venue'), 'is_open' => false]);
+        $this->get(route('admin.dashboard'))->assertOk()
+            ->assertViewHas('sessions', fn ($current) => $current->count() === 112)
+            ->assertViewHas('registrationCount', 2)->assertViewHas('guestCount', 6)
+            ->assertViewHas('checkedInCount', 1)->assertViewHas('cancelledCount', 1)
+            ->assertViewHas('bookedSessionCount', 2)->assertViewHas('availableSessionCount', 109)
+            ->assertViewHas('closedSessionCount', 1)
+            ->assertViewHas('emailCounts', fn ($counts) => $counts->get('failed') === 1)
+            ->assertViewHas('recentRegistrations', fn ($recent) => $recent->count() === 3)
+            ->assertSee(route('admin.registrations.index', ['day' => '2026-11-18', 'time' => '10:00']));
     }
 
     public function test_all_admin_pages_require_login_and_no_public_admin_signup_exists(): void
