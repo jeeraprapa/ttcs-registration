@@ -28,6 +28,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/registrations', [AdminRegistrationController::class, 'index'])->name('registrations.index');
         Route::get('/registrations/export', [AdminRegistrationController::class, 'export'])->name('registrations.export');
         Route::post('/registrations/{registration}/cancel', [AdminRegistrationController::class, 'cancel'])->name('registrations.cancel');
+        Route::get('/check-ins/scan', [CheckInController::class, 'scan'])->name('check-ins.scan');
+        Route::post('/check-ins/resolve', [CheckInController::class, 'resolve'])->middleware('throttle:60,1')->name('check-ins.resolve');
         Route::get('/check-ins/{registration:reference}', [CheckInController::class, 'show'])->middleware('signed')->name('check-ins.show');
         Route::post('/check-ins/{registration:reference}', [CheckInController::class, 'store'])->middleware('signed')->name('check-ins.store');
         Route::get('/registrations/{registration}', [AdminRegistrationController::class, 'show'])->name('registrations.show');

@@ -2175,8 +2175,17 @@
     "file": "assets/zw-U0m7oJ5e.svg",
     "src": "node_modules/flag-icons/flags/4x3/zw.svg"
   },
+  "node_modules/jsqr/dist/jsQR.js": {
+    "file": "assets/jsQR-CMllSKYG.js",
+    "name": "jsQR",
+    "src": "node_modules/jsqr/dist/jsQR.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
   "resources/css/app.css": {
-    "file": "assets/app-B9Fi3A2c.css",
+    "file": "assets/app-5CytT6nv.css",
     "name": "app",
     "names": [
       "app.css"
@@ -2185,10 +2194,13 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-CRmE5VeF.js",
+    "file": "assets/app-BMRmIBmG.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
+    "dynamicImports": [
+      "node_modules/jsqr/dist/jsQR.js"
+    ],
     "css": [
       "assets/app-DKwT4Nnq.css"
     ],
