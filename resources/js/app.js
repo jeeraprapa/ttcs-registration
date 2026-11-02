@@ -6,6 +6,22 @@ if (select && date) {
     const choices = [...select.options].slice(1).map(option => option.cloneNode(true));
     const timeOptions = document.querySelector('[data-time-options]');
     const selection = document.querySelector('[data-session-selection]');
+    const timeError = document.querySelector('#time-session-error');
+    const hasValidTime = () => Boolean(select.value && !select.selectedOptions[0]?.disabled && select.selectedOptions[0]?.dataset.date === date.value);
+    const showTimeError = (focus = true) => {
+        if (timeError) timeError.hidden = false;
+        select.setAttribute('aria-invalid', 'true');
+        timeOptions?.setAttribute('aria-invalid', 'true');
+        if (focus) {
+            timeOptions?.scrollIntoView({ block: 'center', behavior: 'auto' });
+            timeOptions?.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+        }
+    };
+    const clearTimeError = () => {
+        if (timeError) timeError.hidden = true;
+        select.removeAttribute('aria-invalid');
+        timeOptions?.removeAttribute('aria-invalid');
+    };
     const dateButtons = [...document.querySelectorAll('[data-session-date]')];
     const renderTimes = () => {
         if (!timeOptions) return;
@@ -48,15 +64,26 @@ if (select && date) {
         renderTimes();
     };
     dateButtons.forEach(button => button.addEventListener('click', () => update(button.dataset.sessionDate, true)));
-    select.addEventListener('change', renderTimes);
+    select.addEventListener('change', () => {
+        if (hasValidTime()) clearTimeError();
+        renderTimes();
+    });
+    const requireTimeSession = event => {
+        if (!hasValidTime()) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            showTimeError();
+        }
+    };
+    select.form?.addEventListener('submit', requireTimeSession, { capture: true });
+    select.form?.querySelector('[type=submit]')?.addEventListener('click', requireTimeSession);
     if (timeOptions) {
         timeOptions.hidden = false;
         select.classList.add('session-native-select');
         select.tabIndex = -1;
         select.addEventListener('invalid', event => {
             event.preventDefault();
-            if (selection) selection.textContent = 'Please choose an available time to continue.';
-            timeOptions.querySelector('button:not(:disabled)')?.focus();
+            showTimeError();
         });
     }
     update(date.value, false);
@@ -78,6 +105,7 @@ if (select && date) {
                 update(date.value, false);
                 if (focusedId) timeOptions.querySelector(`[data-time-id="${focusedId}"]:not(:disabled)`)?.focus({ preventScroll: true });
                 if (previous && !select.value) {
+                    showTimeError(false);
                     document.querySelector('.availability').textContent = 'Your selected session is no longer available. Please select another session.';
                 }
             } catch { /* Availability is checked again on the server when submitting. */ }

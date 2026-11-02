@@ -27,6 +27,11 @@ class StoreRegistrationRequest extends FormRequest
         ];
     }
 
+    public function messages(): array
+    {
+        return ['event_session_id.required' => 'Please choose an available time session.'];
+    }
+
     protected function prepareForValidation(): void
     {
         $data = [];

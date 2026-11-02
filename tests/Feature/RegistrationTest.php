@@ -132,6 +132,20 @@ class RegistrationTest extends TestCase
         $this->assertDatabaseCount('registrations', 1);
     }
 
+    public function test_time_session_is_required_before_any_booking_or_email_is_created(): void
+    {
+        $data = $this->payload();
+        unset($data['event_session_id']);
+        foreach ([$data, [...$data, 'event_session_id' => ''], [...$data, 'event_session_id' => null]] as $input) {
+            $this->post(route('registration.store'), $input)->assertSessionHasErrors([
+                'event_session_id' => 'Please choose an available time session.',
+            ]);
+        }
+        $this->assertDatabaseCount('registrations', 0);
+        $this->assertDatabaseCount('confirmation_emails', 0);
+        Queue::assertNothingPushed();
+    }
+
     public function test_invalid_pairing_and_guests_and_country_are_rejected(): void
     {
         $this->post(route('registration.store'), $this->payload(['selected_date' => '2026-11-19']))->assertSessionHasErrors('event_session_id');

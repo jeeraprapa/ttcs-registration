@@ -63,7 +63,8 @@
                                     @disabled(!$session->is_open || $session->is_booked)>{{ \Carbon\Carbon::parse($session->local_start_time)->format('h.ia') }}{{ $session->is_booked ? ' — Booked' : (!$session->is_open ? ' — Closed' : '') }}</option>
                         @endforeach
                     </select>
-                    <div class="session-time-grid" data-time-options role="group" aria-labelledby="session-time-label" hidden></div>
+                    <div class="session-time-grid" data-time-options role="group" aria-labelledby="session-time-label" aria-describedby="time-session-error" hidden></div>
+                    <p id="time-session-error" class="field-error" role="alert" hidden>Please choose an available time session.</p>
                     <p class="session-selection" data-session-selection aria-live="polite"></p>
                 </div>
                 <div class="session-legend"><span><i class="legend-available" aria-hidden="true"></i>Available</span><span><i class="legend-booked" aria-hidden="true"></i>Booked / closed</span><span>One booking per session</span></div>
