@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\CheckInController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\MailLogController;
 use App\Http\Controllers\Admin\RegistrationController as AdminRegistrationController;
 use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Admin\TestMailController;
@@ -21,6 +22,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth:admin')->name('logout');
     Route::middleware(['auth:admin', 'admin.active'])->group(function () {
         Route::get('/', DashboardController::class)->name('dashboard');
+        Route::get('/mail-logs', [MailLogController::class, 'index'])->name('mail-logs.index');
         Route::get('/send-testmail', [TestMailController::class, 'create'])->name('send-testmail');
         Route::post('/send-testmail', [TestMailController::class, 'store'])->middleware('throttle:3,1')->name('send-testmail.store');
         Route::get('/registrations', [AdminRegistrationController::class, 'index'])->name('registrations.index');

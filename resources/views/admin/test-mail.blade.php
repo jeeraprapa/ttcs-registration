@@ -2,7 +2,7 @@
 @section('title', 'Send test email')
 @section('content')
     <header class="page-head">
-        <h1>Send test email</h1>
+        <h1>Send test email</h1><p><a href="{{ route('admin.mail-logs.index') }}">View email logs →</a></p>
         <p>Test your SMTP settings with a single email.</p>
     </header>
     <section class="panel session-form">

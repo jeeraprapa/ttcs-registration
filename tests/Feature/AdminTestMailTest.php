@@ -7,6 +7,7 @@ use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailer;
 use Illuminate\Mail\Message;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use RuntimeException;
@@ -89,6 +90,7 @@ class AdminTestMailTest extends TestCase
         $this->post('/admin/send-testmail', $this->payload())->assertRedirect(route('admin.send-testmail'))
             ->assertSessionHas('status')->assertSessionHasNoErrors();
         $this->assertDatabaseCount('registrations', 0);
+        $this->assertDatabaseHas('mail_delivery_logs', ['type' => 'test', 'recipient' => 'recipient@example.test', 'status' => 'provider_accepted']);
     }
 
     public function test_invalid_recipient_is_rejected_before_sending(): void
@@ -106,6 +108,9 @@ class AdminTestMailTest extends TestCase
         $this->mailer()->shouldReceive('raw')->once()->andThrow(new RuntimeException('535 Authentication failed '.$secret.' '.rawurlencode($secret).' '.base64_encode($secret)));
         $this->post('/admin/send-testmail', $this->payload())->assertRedirect(route('admin.send-testmail'))->assertSessionHasErrors('mail');
         $this->assertNull(session('_old_input.password'));
+        $this->assertDatabaseHas('mail_delivery_logs', ['type' => 'test', 'status' => 'failed']);
+        $storedError = DB::table('mail_delivery_logs')->first()->error_message;
+        $this->assertStringNotContainsString($secret, $storedError);
         $error = session('errors')->first('mail');
         $this->assertStringContainsString('535 Authentication failed', $error);
         $this->assertStringContainsString('[redacted]', $error);
