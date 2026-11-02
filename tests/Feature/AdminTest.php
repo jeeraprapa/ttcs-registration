@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Actions\RegisterForSession;
 use App\Models\AdminUser;
 use App\Models\EventSession;
-use App\Support\RegistrationDomains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\ViewErrorBag;
@@ -136,40 +135,45 @@ class AdminTest extends TestCase
         $this->get('/admin/registrations?registered_from=2026-10-11&registered_to=2026-10-10')->assertSessionHasErrors('registered_to');
     }
 
-    public function test_registration_url_filter_applies_to_list_and_export(): void
+    public function test_registration_schedule_filters_apply_to_list_and_export(): void
     {
         $this->seed();
-        $session = EventSession::firstOrFail();
-        config(['registration.registration_urls' => null]);
-        $urls = RegistrationDomains::REGISTRATION_URLS;
+        $slots = [
+            ['2026-11-18', '10:00:00'], ['2026-11-18', '11:00:00'],
+            ['2026-11-19', '10:00:00'], ['2026-12-01', '10:00:00'],
+        ];
         $bookings = [];
-        foreach ([...$urls, null] as $index => $url) {
-            $session = EventSession::orderBy('id')->skip($index)->firstOrFail();
+        foreach ($slots as $index => [$date, $time]) {
+            $session = EventSession::where('local_date', $date)->where('local_start_time', $time)->firstOrFail();
             $bookings[] = app(RegisterForSession::class)->execute([
-                'idempotency_token' => hash('sha256', 'url-filter-'.$index),
-                'event_session_id' => $session->id, 'selected_date' => $session->local_date->format('Y-m-d'),
-                'guest_count' => 1, 'title' => 'Mr.', 'first_name' => 'URL', 'last_name' => 'Filter',
+                'idempotency_token' => hash('sha256', 'schedule-filter-'.$index),
+                'event_session_id' => $session->id, 'selected_date' => $date,
+                'guest_count' => 1, 'title' => 'Mr.', 'first_name' => 'Schedule', 'last_name' => 'Filter',
                 'phone_country_code' => 'HK', 'phone_dial_code' => '+852', 'phone_number' => '00000000',
-                'email' => 'url'.$index.'@example.test', 'referral_source' => 'Others',
+                'email' => 'schedule'.$index.'@example.test', 'referral_source' => 'Others',
                 'consents' => ['privacy' => true, 'marketing_direct' => true, 'marketing_sharing' => true],
-                'registration_url' => $index === 1 ? rtrim($url, '/') : $url,
             ]);
         }
         $this->actingAs($this->admin(), 'admin')->withSession(['admin_password_version' => 1]);
-        $this->get('/admin/registrations')->assertOk()
-            ->assertSee('All registration URLs')
-            ->assertViewHas('registrations', fn ($list) => $list->total() === 4);
-        $this->get('/admin')->assertOk()->assertSee('Registrations by URL')
-            ->assertViewHas('registrationsByUrl', fn ($sources) => $sources->count() === 3
-                && $sources->pluck('url')->all() === $urls
-                && $sources->every(fn ($source) => $source['bookings'] === 1 && $source['guests'] === 1));
+        $cases = [
+            [['month' => '2026-11'], [0, 1, 2]],
+            [['day' => '2026-11-18'], [0, 1]],
+            [['time' => '10:00'], [0, 2, 3]],
+            [['month' => '2026-11', 'time' => '10:00'], [0, 2]],
+            [['month' => '2026-11', 'day' => '2026-11-18', 'time' => '11:00'], [1]],
+            [['month' => '2026-12'], [3]],
+            [['month' => '2026-12', 'day' => '2026-11-18'], []],
+        ];
+        foreach ($cases as [$filters, $indices]) {
+            $expected = array_map(fn (int $index): string => $bookings[$index]->reference, $indices);
+            $this->get(route('admin.registrations.index', $filters))->assertOk()
+                ->assertViewHas('registrations', function ($list) use ($expected): bool {
+                    $this->assertEqualsCanonicalizing($expected, $list->pluck('reference')->all());
 
-        foreach ($urls as $index => $url) {
-            $query = http_build_query(['registration_url' => $url, 'referral_source' => 'Others']);
-            $this->get('/admin/registrations?'.$query)->assertOk()
-                ->assertViewHas('registrations', fn ($list) => $list->total() === 1 && $list->first()->id === $bookings[$index]->id);
-            $response = $this->get('/admin/registrations/export?'.$query)->assertOk()->assertDownload();
-            $path = tempnam(sys_get_temp_dir(), 'url-export-');
+                    return true;
+                });
+            $response = $this->get(route('admin.registrations.export', $filters))->assertOk()->assertDownload();
+            $path = tempnam(sys_get_temp_dir(), 'schedule-export-');
             $reader = new Reader;
             try {
                 file_put_contents($path, $response->streamedContent());
@@ -180,16 +184,22 @@ class AdminTest extends TestCase
                         $rows[] = $row->toArray();
                     }
                 }
-                $this->assertCount(2, $rows);
-                $this->assertSame($bookings[$index]->reference, $rows[1][0]);
+                $this->assertEqualsCanonicalizing($expected, array_column(array_slice($rows, 1), 0));
             } finally {
                 $reader->close();
                 unlink($path);
             }
         }
-        foreach (['/admin/registrations', '/admin/registrations/export'] as $path) {
-            $this->get($path.'?registration_url=https://unconfigured.example/')->assertSessionHasErrors('registration_url');
+        $this->get(route('admin.registrations.index', ['session_id' => 'bad', 'registration_url' => 'https://removed.example/']))
+            ->assertOk()->assertViewHas('filters', fn ($filters) => ! array_key_exists('session_id', $filters) && ! array_key_exists('registration_url', $filters))
+            ->assertViewHas('registrations', fn ($list) => $list->total() === 4);
+        foreach (['month' => '2026-13', 'day' => '2026-02-30', 'time' => '25:00'] as $key => $value) {
+            foreach (['admin.registrations.index', 'admin.registrations.export'] as $route) {
+                $this->get(route($route, [$key => $value]))->assertSessionHasErrors($key);
+            }
         }
+        $this->get(route('admin.registrations.index'))->assertOk()
+            ->assertViewHas('registrations', fn ($list) => $list->total() === 4);
     }
 
     public function test_excel_export_includes_all_filtered_rows_and_preserves_text_safely(): void
@@ -245,6 +255,52 @@ class AdminTest extends TestCase
         } finally {
             unlink($path);
         }
-        $this->get('/admin/registrations/export?session_id=bad')->assertSessionHasErrors('session_id');
+        $this->get('/admin/registrations/export?time=bad')->assertSessionHasErrors('time');
+    }
+
+    public function test_event_sessions_can_be_filtered_by_month_day_time_and_their_combination(): void
+    {
+        $this->seed();
+        $this->actingAs($this->admin(), 'admin')->withSession(['admin_password_version' => 1]);
+        $cases = [
+            [['month' => '2026-11'], 70],
+            [['month' => '2026-12'], 42],
+            [['day' => '2026-11-18'], 7],
+            [['time' => '14:00'], 16],
+            [['month' => '2026-12', 'time' => '17:00'], 6],
+            [['month' => '2026-11', 'day' => '2026-11-18', 'time' => '10:00'], 1],
+        ];
+        foreach ($cases as [$filters, $count]) {
+            $this->get(route('admin.sessions.index', $filters))->assertOk()
+                ->assertViewHas('filters', $filters)
+                ->assertViewHas('sessions', function ($sessions) use ($filters, $count): bool {
+                    $this->assertCount($count, $sessions);
+                    foreach ($sessions as $session) {
+                        if (isset($filters['month'])) {
+                            $this->assertSame($filters['month'], $session->local_date->format('Y-m'));
+                        }
+                        if (isset($filters['day'])) {
+                            $this->assertSame($filters['day'], $session->local_date->format('Y-m-d'));
+                        }
+                        if (isset($filters['time'])) {
+                            $this->assertSame($filters['time'].':00', $session->local_start_time);
+                        }
+                    }
+
+                    return true;
+                });
+        }
+        $this->get(route('admin.sessions.index'))->assertOk()->assertViewHas('sessions', fn ($sessions) => $sessions->count() === 112);
+    }
+
+    public function test_event_session_filters_handle_no_results_and_reject_invalid_values(): void
+    {
+        $this->seed();
+        $this->actingAs($this->admin(), 'admin')->withSession(['admin_password_version' => 1]);
+        $this->get(route('admin.sessions.index', ['month' => '2026-12', 'day' => '2026-11-18']))
+            ->assertOk()->assertSee('No sessions match these filters.')->assertViewHas('sessions', fn ($sessions) => $sessions->isEmpty());
+        foreach (['month' => '2026-13', 'day' => '2026-02-30', 'time' => '25:00'] as $key => $value) {
+            $this->get(route('admin.sessions.index', [$key => $value]))->assertSessionHasErrors($key);
+        }
     }
 }

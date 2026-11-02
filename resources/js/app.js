@@ -170,3 +170,19 @@ if (country) {
     sync();
 }
 document.querySelectorAll('form[data-submit-once]').forEach(form=>form.addEventListener('submit',()=>{const button=form.querySelector('[type=submit]');button.disabled=true;button.dataset.originalText=button.textContent;button.textContent=button.dataset.loadingText||'Please wait…';}));window.addEventListener('pageshow',()=>document.querySelectorAll('button[data-original-text]').forEach(b=>{b.disabled=false;b.textContent=b.dataset.originalText;}));
+
+const sessionFilterMonth = document.querySelector('[data-session-filter-month]');
+const sessionFilterDay = document.querySelector('[data-session-filter-day]');
+if (sessionFilterMonth && sessionFilterDay) {
+    const dayChoices = [...sessionFilterDay.options].slice(1).map(option => option.cloneNode(true));
+    const updateFilterDays = () => {
+        const previous = sessionFilterDay.value;
+        sessionFilterDay.replaceChildren(new Option('All days', ''));
+        dayChoices.filter(option => !sessionFilterMonth.value || option.dataset.month === sessionFilterMonth.value)
+            .forEach(option => sessionFilterDay.add(option.cloneNode(true)));
+        sessionFilterDay.value = previous;
+        if (!sessionFilterDay.value) sessionFilterDay.value = '';
+    };
+    sessionFilterMonth.addEventListener('change', updateFilterDays);
+    updateFilterDays();
+}

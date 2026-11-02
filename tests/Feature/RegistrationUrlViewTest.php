@@ -3,27 +3,20 @@
 namespace Tests\Feature;
 
 use App\Models\AdminUser;
-use App\Support\RegistrationDomains;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 class RegistrationUrlViewTest extends TestCase
 {
-    public function test_url_filter_renders_when_cached_config_and_view_variable_are_missing_or_null(): void
+    public function test_registration_filters_use_month_day_and_time_instead_of_url_or_session_id(): void
     {
-        config(['registration.registration_urls' => null]);
         $this->actingAs(new AdminUser(['name' => 'Test Admin']), 'admin');
-        $data = [
+        $this->view('admin.registrations.index', [
             'registrations' => new LengthAwarePaginator([], 0, 20),
-            'sessions' => collect(), 'filters' => [], 'referralSources' => [],
-            'errors' => new ViewErrorBag,
-        ];
-        foreach ([$data, [...$data, 'registrationUrls' => null]] as $viewData) {
-            $view = $this->view('admin.registrations.index', $viewData)->assertSee('All registration URLs');
-            foreach (RegistrationDomains::REGISTRATION_URLS as $url) {
-                $view->assertSee($url);
-            }
-        }
+            'dates' => collect(), 'months' => collect(), 'times' => collect(),
+            'filters' => [], 'referralSources' => [], 'errors' => new ViewErrorBag,
+        ])->assertSee('All months')->assertSee('All days')->assertSee('All time sessions')
+            ->assertDontSee('name="registration_url"', false)->assertDontSee('name="session_id"', false);
     }
 }

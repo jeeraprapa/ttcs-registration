@@ -7,7 +7,6 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminAuditLog;
 use App\Models\EventSession;
 use App\Models\Registration;
-use App\Support\RegistrationDomains;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,11 +20,13 @@ class RegistrationController extends Controller
     {
         [$query, $filters] = $this->filteredQuery($request);
 
+        $dates = EventSession::select('local_date')->distinct()->orderBy('local_date')->get()->pluck('local_date');
+
         return view('admin.registrations.index', [
             'registrations' => $query->latest('id')->paginate(20)->withQueryString(),
-            'sessions' => EventSession::orderBy('local_date')->orderBy('local_start_time')->get(),
+            'dates' => $dates, 'months' => $dates->unique(fn ($date) => $date->format('Y-m'))->values(),
+            'times' => EventSession::select('local_start_time')->distinct()->orderBy('local_start_time')->pluck('local_start_time'),
             'filters' => $filters, 'referralSources' => config('registration.referral_sources'),
-            'registrationUrls' => RegistrationDomains::REGISTRATION_URLS,
         ]);
     }
 
@@ -45,11 +46,13 @@ class RegistrationController extends Controller
     {
         Gate::authorize('manage-admin');
         $filters = $request->validate([
-            'q' => ['nullable', 'string', 'max:150'], 'session_id' => ['nullable', 'integer', 'exists:event_sessions,id'],
+            'q' => ['nullable', 'string', 'max:150'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'day' => ['nullable', 'date_format:Y-m-d'],
+            'time' => ['nullable', 'date_format:H:i'],
             'registered_from' => ['nullable', 'date_format:Y-m-d'],
             'registered_to' => ['nullable', 'date_format:Y-m-d', Rule::when($request->filled('registered_from'), ['after_or_equal:registered_from'])],
             'referral_source' => ['nullable', Rule::in(config('registration.referral_sources'))],
-            'registration_url' => ['nullable', Rule::in(RegistrationDomains::REGISTRATION_URLS)],
             'attendance' => ['nullable', Rule::in(['booked', 'checked_in', 'cancelled'])],
         ]);
         $query = Registration::with('eventSession');
@@ -60,8 +63,15 @@ class RegistrationController extends Controller
         } elseif (($filters['attendance'] ?? '') === 'booked') {
             $query->whereNull('cancelled_at')->whereNull('checked_in_at');
         }
-        if (! empty($filters['session_id'])) {
-            $query->where('event_session_id', $filters['session_id']);
+        if (! empty($filters['month'])) {
+            $month = Carbon::parse($filters['month'].'-01');
+            $query->whereBetween('session_date_snapshot', [$month->format('Y-m-d'), $month->copy()->endOfMonth()->format('Y-m-d')]);
+        }
+        if (! empty($filters['day'])) {
+            $query->where('session_date_snapshot', $filters['day']);
+        }
+        if (! empty($filters['time'])) {
+            $query->where('session_time_snapshot', $filters['time'].':00');
         }
         if (! empty($filters['q'])) {
             $term = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $filters['q']);
@@ -79,9 +89,6 @@ class RegistrationController extends Controller
         }
         if (! empty($filters['referral_source'])) {
             $query->where('referral_source', $filters['referral_source']);
-        }
-        if (! empty($filters['registration_url'])) {
-            $query->whereIn('registration_url', [$filters['registration_url'], rtrim($filters['registration_url'], '/')]);
         }
 
         return [$query, $filters];
