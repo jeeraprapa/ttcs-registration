@@ -67,6 +67,8 @@ class RegistrationTest extends TestCase
             ->assertSessionHas('registration_tracked_references.'.$booking->reference, true)
             ->assertSee("event: 'registration'", false)
             ->assertSee('The Tong Chong Suite, 9/F Cambridge House')
+            ->assertSee('Download booking')
+            ->assertSee('data-booking-card', false)
             ->assertSee("979 King's Road, Taikoo Place, Quarry Bay, Hong Kong")
             ->assertSee($booking->reference);
         $this->get(route('registration.thank-you'))->assertOk()

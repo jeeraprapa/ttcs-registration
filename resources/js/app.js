@@ -1,6 +1,7 @@
 import { enforceExternalBrowser } from './line-browser.js';
 import './check-in-scanner.js';
 import './admin-navigation.js';
+import './booking-download.js';
 enforceExternalBrowser();
 import 'flag-icons/css/flag-icons.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
