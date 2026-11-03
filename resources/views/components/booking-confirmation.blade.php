@@ -8,18 +8,7 @@
 @endif
 <p>Booking reference: {{ $registration->reference }}</p>
 <p><strong>Venue</strong></p>
-<p>
-@if(isset($venueAddressLines))
-    @foreach($venueAddressLines as $line)
-        {{ $line }}
-        @if(!$loop->last)
-            <br>
-        @endif
-    @endforeach
-@else
-    {{ $registration->venue_snapshot }}
-@endif
-</p>
+<p>The Tong Chong Suite, 9/F Cambridge House<br>979 King&#039;s Road, Taikoo Place, Quarry Bay, Hong Kong</p>
 <p><strong>Date &amp; time</strong></p>
 <p>{{ $registration->session_date_snapshot->format('l, j F Y') }}<br>{{ \Carbon\Carbon::parse($registration->session_time_snapshot)->format('h.i A') }} ({{ $registration->timezone_snapshot }})</p>
 <p>{{ $registration->guest_count }} guests, including yourself</p>

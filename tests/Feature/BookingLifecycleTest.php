@@ -149,6 +149,8 @@ class BookingLifecycleTest extends TestCase
         $this->assertSame("\x89PNG\r\n\x1a\n", substr($qr, 0, 8));
         $mail = new RegistrationConfirmation($booking);
         $mail->assertSeeInHtml('THANK YOU FOR REGISTERING');
+        $mail->assertSeeInHtml('The Tong Chong Suite, 9/F Cambridge House');
+        $mail->assertSeeInHtml("979 King's Road, Taikoo Place, Quarry Bay, Hong Kong");
         $mail->assertSeeInHtml('data:image/png;base64,');
         $sent = (new MailManager($this->app))->mailer('array')->to($booking->email)->send(new RegistrationConfirmation($booking));
         $mime = $sent->getOriginalMessage();
