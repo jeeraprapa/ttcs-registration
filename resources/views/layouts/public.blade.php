@@ -41,5 +41,11 @@
     </div>
 </footer>
 <!-- Google Tag Manager (noscript) --> <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MWCHZ48T" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript> <!-- End Google Tag Manager (noscript) -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-58VV7QWT"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+</script>
 </body>
 </html>
