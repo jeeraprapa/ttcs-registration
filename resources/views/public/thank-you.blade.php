@@ -1,7 +1,13 @@
 @extends('layouts.public') @section('title','Thank you for registering')
 @section('content')
 <section class="confirmation">
-@include('components.booking-confirmation', ['qrSource' => app(\App\Support\RegistrationQrCode::class)->dataUri($registration)])
+@include('components.booking-confirmation', [
+    'qrSource' => app(\App\Support\RegistrationQrCode::class)->dataUri($registration),
+    'venueAddressLines' => [
+        'The Tong Chong Suite, 9/F Cambridge House',
+        "979 King's Road, Taikoo Place, Quarry Bay, Hong Kong",
+    ],
+])
 @if(!$registration->cancelled_at)<p>Your registration details and QR code will also be sent to your email address.</p>@endif
 </section>
 @if($submissionId)

@@ -13,10 +13,11 @@
                 exceptional address.</p></div>
         <div class="event-meta">
             <div><p class="eyebrow">Event details</p>
-                <p>18 November – 6 December 2026 | Selected dates, 10:00 AM – 5:00 PM</p>
+                <p>18 November – 6 December 2026 | 10:00 AM – 5:00 PM</p>
             </div>
             <div><p class="eyebrow">Venue</p>
-                <p>Sky Lounge, 49/F Upper House Hong Kong<br>88 Queensway, Admiralty, Hong Kong</p>
+                <p>The Tong Chong Suite, 9/F Cambridge House
+                    <br>979 King's Road, Taikoo Place, Quarry Bay, Hong Kong</p>
             </div>
         </div>
     </section>

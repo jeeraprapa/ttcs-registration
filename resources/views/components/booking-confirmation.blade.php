@@ -7,7 +7,19 @@
 <img class="check-in-qr" src="{{ $qrSource }}" width="240" height="240" alt="Your booking QR code for staff check-in" style="display:block;width:240px;max-width:100%;height:auto;margin:20px auto">
 @endif
 <p>Booking reference: {{ $registration->reference }}</p>
-<p><strong>Venue</strong></p><p>{{ $registration->venue_snapshot }}</p>
+<p><strong>Venue</strong></p>
+<p>
+@if(isset($venueAddressLines))
+    @foreach($venueAddressLines as $line)
+        {{ $line }}
+        @if(!$loop->last)
+            <br>
+        @endif
+    @endforeach
+@else
+    {{ $registration->venue_snapshot }}
+@endif
+</p>
 <p><strong>Date &amp; time</strong></p>
 <p>{{ $registration->session_date_snapshot->format('l, j F Y') }}<br>{{ \Carbon\Carbon::parse($registration->session_time_snapshot)->format('h.i A') }} ({{ $registration->timezone_snapshot }})</p>
 <p>{{ $registration->guest_count }} guests, including yourself</p>
